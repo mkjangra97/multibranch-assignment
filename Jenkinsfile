@@ -1,19 +1,40 @@
 pipeline {
     agent any
-
     stages {
         stage('Prepare Workspace') {
             steps {
                 deleteDir()
             }
         }
+
         stage('Code Checkout') {
             steps {
                 checkout scm
                 script {
-                    // Calculate branch AFTER checkout
-                    env.BRANCH = env.GIT_LOCAL_BRANCH ?: env.GIT_BRANCH?.replaceAll('origin/', '') ?: 'unknown'
-                    echo "Cloned branch: ${env.BRANCH}"
+                    // Most reliable branch detection
+                    def rawBranch = env.GIT_LOCAL_BRANCH 
+                        ?: env.GIT_BRANCH 
+                        ?: env.BRANCH_NAME 
+                        ?: 'unknown'
+                    
+                    // Remove "origin/" prefix if present
+                    env.BRANCH = rawBranch.replaceAll('^origin/', '').trim()
+                    
+                    echo "Raw branch value: ${rawBranch}"
+                    echo "Resolved branch: ${env.BRANCH}"
+                }
+            }
+        }
+
+        // ✅ Skip stage PEHLE aana chahiye
+        stage('Skip Prefix Branch') {
+            when {
+                expression { env.BRANCH.startsWith('prefix') }
+            }
+            steps {
+                script {
+                    currentBuild.result = 'ABORTED'
+                    error("prefix branches ke liye pipeline nahi chalegi. Branch: ${env.BRANCH}")
                 }
             }
         }
@@ -26,26 +47,14 @@ pipeline {
                 sh '''
                     echo "Deploying main branch to production server..."
                     sshpass -p 'm' rsync -avz -e 'ssh -o StrictHostKeyChecking=no' \
-                        ./index.html manish@192.168.10.158/:/var/www/main/
+                        ./index.html manish@192.168.10.158:/var/www/main/
                 '''
-            }
-        }
-
-        stage('Skip Branch') {
-        when {
-                expression { return env.BRANCH == 'prefix'}
-            }
-        steps {
-            script {
-            currentBuild.result = 'Aborted'
-            error('prefix branches ke liye pipeline nahi Chalegi.')
-            	    }
             }
         }
 
         stage('Deploy to Feature') {
             when {
-                expression { env.BRANCH == 'feature' }
+                expression { env.BRANCH.startsWith('feature') }
             }
             steps {
                 sh '''
@@ -55,15 +64,17 @@ pipeline {
                 '''
             }
         }
-
     }
 
     post {
         success {
-            echo "Pipeline complete — branch: ${env.BRANCH}"
+            echo "✅ Pipeline complete — branch: ${env.BRANCH}"
+        }
+        aborted {
+            echo "⛔ Pipeline aborted — branch: ${env.BRANCH}"
         }
         failure {
-            echo "Pipeline failed — branch: ${env.BRANCH}"
+            echo "❌ Pipeline failed — branch: ${env.BRANCH}"
         }
     }
 }
