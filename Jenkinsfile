@@ -26,7 +26,7 @@ pipeline {
                 sh '''
                     echo "Deploying main branch to production server..."
                     sshpass -p 'm' rsync -avz -e 'ssh -o StrictHostKeyChecking=no' \
-                        ./index.html manish@100.68.126.54/:/var/www/main/
+                        ./index.html manish@100.68.126.54:/var/www/main/
                 '''
             }
         }
